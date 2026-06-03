@@ -1,150 +1,92 @@
-# jb_ImageMatcher
+# Image Matcher - Rozpoznawanie tego samego obiektu
 
-import cv2
-import numpy as np
-import os
-import shutil
-from pathlib import Path
-from typing import List, Tuple
+Program do wyszukiwania zdjęć tego samego obiektu w dużym folderze zdjęć.
 
-class ImageMatcher:
-    def __init__(self, patterns_folder: str, search_folder: str, output_folder: str = "matched_images", min_matches: int = 15):
-        """
-        Args:
-            patterns_folder: Folder ze zdjęciami wzorcowymi (10 zdjęć)
-            search_folder: Folder do przeszukania
-            output_folder: Folder do zapisania wyników
-            min_matches: Minimalna liczba dopasowanych cech
-        """
-        self.patterns_folder = patterns_folder
-        self.search_folder = search_folder
-        self.output_folder = output_folder
-        self.min_matches = min_matches
-        self.patterns = []
-        self.sift = cv2.SIFT_create()
+## Jak uruchomić
 
-        Path(output_folder).mkdir(exist_ok=True)
+### 1. Instalacja zależności
+```bash
+pip install -r requirements.txt
+```
 
-    def load_patterns(self) -> List[Tuple[str, cv2.Mat, list, list]]:
-        """Wczytuje zdjęcia wzorcowe i wyznacza ich cechy"""
-        print(f"📷 Wczytywanie wzorców z: {self.patterns_folder}")
+### 2. Przygotowanie folderów
 
-        for filename in os.listdir(self.patterns_folder):
-            if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp')):
-                path = os.path.join(self.patterns_folder, filename)
-                img = cv2.imread(path)
+Utwórz następującą strukturę:
+```
+projekt-py/
+├── image_matcher.py
+├── requirements.txt
+├── patterns/           ← Wrzuć tu 10 zdjęć wzorcowych
+│   ├── object_1.jpg
+│   ├── object_2.jpg
+│   └── ...
+└── images/            ← Folder ze zdjęciami do przeszukania
+    ├── photo1.jpg
+    ├── photo2.jpg
+    └── ...
+```
 
-                if img is None:
-                    print(f"⚠️  Nie mogę wczytać: {filename}")
-                    continue
+### 3. Uruchomienie
+```bash
+python image_matcher.py
+```
 
-                # Konwersja do skali szarości
-                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+## Jak to działa
 
-                # Wyszukiwanie cech SIFT
-                kp, des = self.sift.detectAndCompute(gray, None)
+1. **Załadowanie wzorców** - Program analizuje 10 zdjęć z folderu `patterns`
+2. **Ekstrakcja cech** - Używa algorytmu SIFT do wyznaczenia unikalnych punktów charakterystycznych
+3. **Przeszukiwanie** - Porównuje każde zdjęcie z folderu `images` z wzorcami
+4. **Dopasowanie** - Liczy liczbę pasujących cech (domyślnie: minimum 15)
+5. **Przenoszenie** - Pasujące zdjęcia trafiają do folderu `matched_images`
 
-                if des is not None:
-                    self.patterns.append((filename, img, kp, des))
-                    print(f"✓ Załadowany wzorzec: {filename} ({len(kp)} cech)")
+## Konfiguracja
 
-        if not self.patterns:
-            print("❌ Brak wzorców do załadowania!")
-            return False
+Edytuj parametry w `image_matcher.py`:
 
-        print(f"✓ Załadowano {len(self.patterns)} wzorców\n")
-        return True
+```python
+MIN_MATCHES = 15  # Zwiększ dla bardziej restrykcyjnego wyszukiwania
+```
 
-    def count_matches(self, image_path: str) -> int:
-        """Liczy dopasowania między wzorcami a zdjęciem"""
-        img = cv2.imread(image_path)
+## Parametry
 
-        if img is None:
-            return 0
+| Parametr | Znaczenie |
+|----------|-----------|
+| `PATTERNS_FOLDER` | Folder z wzorcami (10 zdjęć) |
+| `SEARCH_FOLDER` | Folder do przeszukania |
+| `OUTPUT_FOLDER` | Folder z wynikami |
+| `MIN_MATCHES` | Minimalna liczba dopasowań (wyższa = bardziej restrykcyjne) |
 
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        kp, des = self.sift.detectAndCompute(gray, None)
+## Porady
 
-        if des is None:
-            return 0
+- **Zbyt mało wyników?** - Zmniejsz `MIN_MATCHES` na 10-12
+- **Zbyt wiele fałszywych pozytywów?** - Zwiększ `MIN_MATCHES` na 20-25
+- **Lepsze wyniki** - Wrzuć wzorce z różnych kątów tego samego obiektu
 
-        # FLANN matcher
-        FLANN_INDEX_KDTREE = 1
-        index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
-        search_params = dict(checks=50)
-        flann = cv2.FlannBasedMatcher(index_params, search_params)
+## Format zdjęć
 
-        total_matches = 0
+Obsługiwane: JPG, JPEG, PNG, BMP
 
-        # Porównanie ze wszystkimi wzorcami
-        for pattern_name, _, _, pattern_des in self.patterns:
-            matches = flann.knnMatch(pattern_des, des, k=2)
+## Przykład wyjścia
 
-            if not matches:
-                continue
+```
+Wczytywanie wzorców z: patterns
+✓ Załadowany wzorzec: object_1.jpg (245 cech)
+✓ Załadowany wzorzec: object_2.jpg (189 cech)
+...
+✓ Załadowano 10 wzorców
 
-            # Lowe's ratio test
-            good_matches = 0
-            for match_pair in matches:
-                if len(match_pair) == 2:
-                    m, n = match_pair
-                    if m.distance < 0.7 * n.distance:
-                        good_matches += 1
+Przeszukiwanie folderu: images
+Znaleziono 50 zdjęć do przeszukania
 
-            total_matches += good_matches
+[1/50] photo1.jpg: 3 dopasowań ✗
+[2/50] photo2.jpg: 42 dopasowań ✓ PASUJE
+[3/50] photo3.jpg: 18 dopasowań ✓ PASUJE
+...
 
-        return total_matches
+Przenoszenie 15 pasujących zdjęć do: matched_images
+✓ photo2.jpg (dopasowania: 42)
+✓ photo3.jpg (dopasowania: 18)
+...
 
-    def search_and_match(self) -> None:
-        """Przeszukuje folder i przenosi pasujące zdjęcia"""
-        print(f"🔍 Przeszukiwanie folderu: {self.search_folder}")
-
-        matched_images = []
-        image_files = [f for f in os.listdir(self.search_folder)
-                      if f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp'))]
-
-        print(f"Znaleziono {len(image_files)} zdjęć do przeszukania\n")
-
-        for idx, filename in enumerate(image_files, 1):
-            image_path = os.path.join(self.search_folder, filename)
-            matches = self.count_matches(image_path)
-
-            status = "✓ PASUJE" if matches >= self.min_matches else "✗"
-            print(f"[{idx}/{len(image_files)}] {filename}: {matches} dopasowań {status}")
-
-            if matches >= self.min_matches:
-                matched_images.append((filename, matches))
-
-        # Przenoszenie pasujących zdjęć
-        print(f"\n📁 Przenoszenie {len(matched_images)} pasujących zdjęć do: {self.output_folder}")
-
-        for filename, matches in matched_images:
-            src = os.path.join(self.search_folder, filename)
-            dst = os.path.join(self.output_folder, filename)
-
-            shutil.copy2(src, dst)
-            print(f"✓ {filename} (dopasowania: {matches})")
-
-        print(f"\n✅ Gotowe! Znaleziono i przeniesiono {len(matched_images)} zdjęć")
-
-if __name__ == "__main__":
-    # Konfiguracja
-    PATTERNS_FOLDER = "patterns"  # Folder z 10 wzorcowymi zdjęciami
-    SEARCH_FOLDER = "images"      # Folder do przeszukania
-    OUTPUT_FOLDER = "matched_images"  # Folder z wynikami
-    MIN_MATCHES = 15  # Minimalna liczba dopasowań
-
-    # Sprawdzenie folderów
-    if not os.path.exists(PATTERNS_FOLDER):
-        print(f"❌ Folder {PATTERNS_FOLDER} nie istnieje!")
-        exit(1)
-
-    if not os.path.exists(SEARCH_FOLDER):
-        print(f"❌ Folder {SEARCH_FOLDER} nie istnieje!")
-        exit(1)
-
-    # Uruchomienie
-    matcher = ImageMatcher(PATTERNS_FOLDER, SEARCH_FOLDER, OUTPUT_FOLDER, MIN_MATCHES)
-
-    if matcher.load_patterns():
-        matcher.search_and_match()
+✅ Gotowe! Znaleziono i przeniesiono 15 zdjęć
+```
