@@ -92,4 +92,5 @@ Przenoszenie 15 pasujących zdjęć do: matched_images
 ```
 
 Oryginał porównuje detale lokalne (cechy, kształty, punkty charakterystyczne).
+
 PyTorch porównuje ogólną reprezentację obrazu (cechy semantyczne / wizualne na poziomie całego obrazu).
